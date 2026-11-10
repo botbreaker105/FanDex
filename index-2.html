@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FIELDDEX — Fan Creature Registry</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<div class="shell">
+  <header class="device">
+    <div class="brand">
+      <div class="brand-lamp"></div>
+      <div>
+        <h1>FIELDDEX</h1>
+        <p>Fan Creature Registry</p>
+      </div>
+    </div>
+    <div class="readout">
+      <div class="stat"><b id="statTotal">0</b><span>Entries</span></div>
+      <div class="stat"><b id="statRegions">0</b><span>Regions</span></div>
+      <div class="stat"><b id="statLegendary">0</b><span>Legendary</span></div>
+    </div>
+    <button class="btn-new" id="openAdd">＋ Log Creature</button>
+  </header>
+
+  <nav class="tabs">
+    <button data-tab="complete" class="active">Complete Dex</button>
+    <button data-tab="mydex">★ My Dex</button>
+    <button data-tab="battle">⚔ Battle</button>
+    <button data-tab="items">🎒 Item Dex</button>
+    <button data-tab="movedex">📖 Move Dex</button>
+    <button data-tab="abilitydex">✨ Ability Dex</button>
+    <button data-tab="regions">Regions</button>
+    <button data-tab="settings">Settings</button>
+  </nav>
+
+  <!-- ===== COMPLETE DEX VIEW ===== -->
+  <section class="view active" id="view-complete">
+    <div class="filter-bar">
+      <div class="search-wrap">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="color:var(--slate)" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="searchInput" placeholder="Search by name or creator…">
+      </div>
+      <div class="chip-row">
+        <div class="filter-chip">
+          <button class="chip-btn" id="regionChipBtn">All Regions <span class="caret">▾</span></button>
+          <div class="chip-panel" id="regionChipPanel"></div>
+        </div>
+        <div class="filter-chip">
+          <button class="chip-btn" id="typeChipBtn">All Types <span class="caret">▾</span></button>
+          <div class="chip-panel" id="typeChipPanel"></div>
+        </div>
+        <div class="filter-chip">
+          <button class="chip-btn" id="rarityChipBtn">All Rarities <span class="caret">▾</span></button>
+          <div class="chip-panel" id="rarityChipPanel"></div>
+        </div>
+        <div class="filter-chip">
+          <button class="chip-btn" id="sortChipBtn">Sort: No. <span class="caret">▾</span></button>
+          <div class="chip-panel" id="sortChipPanel"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid" id="grid"></div>
+  </section>
+
+  <!-- ===== MY DEX VIEW (FAVORITES) ===== -->
+  <section class="view" id="view-mydex">
+    <div class="section-head">
+      <div>
+        <h2>My Dex</h2>
+        <p>Your favorited creatures, all in one place.</p>
+      </div>
+    </div>
+    <div class="grid" id="gridFav"></div>
+  </section>
+
+  <!-- ===== BATTLE VIEW ===== -->
+  <section class="view" id="view-battle">
+    <div class="section-head">
+      <div>
+        <h2>Battle Simulator</h2>
+        <p>Pit two creatures against each other and see who's favored to win.</p>
+      </div>
+    </div>
+
+    <!-- ===== BATTLE SEARCH BAR — narrows every picker below (Fighter A/B AND both Held Item
+         dropdowns) at once, so a big roster/item-list never means "scrolling hell" while setting
+         up a match. Name search matches battler names, move names on their kit, and item names.
+         Type filter narrows the two fighter pickers to battlers carrying that type. ===== -->
+    <div class="filter-bar battle-search-bar">
+      <div class="search-wrap">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="color:var(--slate)" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="battleSearchInput" placeholder="Search battlers, moves &amp; items…">
+      </div>
+      <div class="chip-row">
+        <div class="filter-chip">
+          <button class="chip-btn" id="battleTypeChipBtn">All Types <span class="caret">▾</span></button>
+          <div class="chip-panel" id="battleTypeChipPanel"></div>
+        </div>
+        <button type="button" class="chip-btn" id="battleSearchClearBtn" title="Clear search &amp; type filter">✕ Clear</button>
+      </div>
+      <div class="field-hint" id="battleSearchSummary" style="width:100%;"></div>
+    </div>
+
+    <label class="battle-fav-toggle">
+      <input type="checkbox" id="battleFavOnly"> Only show favorites in the pickers
+    </label>
+    <label class="battle-fav-toggle">
+      <input type="checkbox" id="allowMegaToggle"> Allow Mega Evolution
+      <input type="number" id="megaChancePct" min="0" max="100" value="50" style="width:56px;margin-left:8px;"> % chance per round
+    </label>
+    <label class="battle-fav-toggle">
+      Field Effect
+      <select id="fieldEffectSelect">
+        <option value="none">None</option>
+        <option value="grassy">Grassy Field (Grass types fight at 1.2× all stats and heal 5% Max HP each round)</option>
+        <option value="flood">Flood (Water types fight at 1.5× Speed and dodge more; everyone else is slowed and Fire moves are weakened; Flying types are immune)</option>
+        <option value="misty">Misty Terrain (Dragon-type moves deal 50% damage to grounded targets; grounded targets can't be Burned, Frozen, Paralyzed, Poisoned, or put to Sleep — Flying types and "levitating"-tagged Pokémon aren't affected)</option>
+        <option value="electric">Electric Terrain (Electric moves hit 1.3× harder; grounded targets can't fall asleep; Steel-type targets are auto-hit by Electric moves, bypassing accuracy/dodge)</option>
+        <option value="psychic">Psychic Terrain (Psychic moves hit 1.3× harder; any move with priority above 0 fails outright against a grounded target)</option>
+        <option value="poisonous">Poisonous Terrain (Non-Poison grounded targets fight at half Defense/Sp. Def; Steel types lose their immunity to Poison/Bad Poison while it's active)</option>
+      </select>
+    </label>
+
+    <div class="battle-arena">
+      <div class="fighter-slot">
+        <label>Fighter A</label>
+        <select id="fighterASelect"><option value="">— Choose a creature —</option></select>
+        <div class="fighter-preview" id="fighterAPreview"></div>
+        <label>Fighter A Held Item</label>
+        <select id="fighterAItemSelect"><option value="">None</option></select>
+      </div>
+      <div class="vs-divider">VS</div>
+      <div class="fighter-slot">
+        <label>Fighter B</label>
+        <select id="fighterBSelect"><option value="">— Choose a creature —</option></select>
+        <div class="fighter-preview" id="fighterBPreview"></div>
+        <label>Fighter B Held Item</label>
+        <select id="fighterBItemSelect"><option value="">None</option></select>
+      </div>
+    </div>
+
+    <button class="btn-new" id="simulateBattleBtn" style="width:100%;margin-top:16px;" disabled>⚔ Simulate Battle</button>
+
+    <div id="battleResults"></div>
+  </section>
+
+  <!-- ===== ITEM DEX VIEW ===== -->
+  <section class="view" id="view-items">
+    <div class="section-head">
+      <div>
+        <h2>Item Dex</h2>
+        <p>Held &amp; consumable items that fighters can carry into battle.</p>
+      </div>
+    </div>
+    <div class="grid" id="itemGrid"></div>
+  </section>
+
+  <!-- ===== GLOBAL MOVE DEX VIEW ===== -->
+  <section class="view" id="view-movedex">
+    <div class="section-head">
+      <div>
+        <h2>Move Dex</h2>
+        <p>Every move created across your whole registry, in one searchable encyclopedia. Moves with an identical name, stats and effects are grouped into a single entry.</p>
+      </div>
+    </div>
+    <div class="filter-bar">
+      <div class="search-wrap">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="color:var(--slate)" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="moveDexSearchInput" placeholder="Search moves by name…">
+      </div>
+      <div class="chip-row">
+        <div class="filter-chip">
+          <button class="chip-btn" id="moveDexTypeChipBtn">All Types <span class="caret">▾</span></button>
+          <div class="chip-panel" id="moveDexTypeChipPanel"></div>
+        </div>
+        <div class="filter-chip">
+          <button class="chip-btn" id="moveDexCatChipBtn">All Categories <span class="caret">▾</span></button>
+          <div class="chip-panel" id="moveDexCatChipPanel"></div>
+        </div>
+      </div>
+    </div>
+    <div class="field-hint" id="moveDexSummary" style="margin:2px 2px 10px;"></div>
+    <div class="grid" id="moveDexGrid"></div>
+  </section>
+
+  <!-- ===== GLOBAL ABILITY DEX VIEW ===== -->
+  <section class="view" id="view-abilitydex">
+    <div class="section-head">
+      <div>
+        <h2>Ability Dex</h2>
+        <p>Every ability created across your whole registry. Identical name/effect abilities are grouped into a single entry.</p>
+      </div>
+    </div>
+    <div class="filter-bar">
+      <div class="search-wrap">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="color:var(--slate)" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="abilityDexSearchInput" placeholder="Search abilities by name…">
+      </div>
+      <div class="chip-row">
+        <div class="filter-chip">
+          <button class="chip-btn" id="abilityDexTypeChipBtn">All Kinds <span class="caret">▾</span></button>
+          <div class="chip-panel" id="abilityDexTypeChipPanel"></div>
+        </div>
+      </div>
+    </div>
+    <div class="field-hint" id="abilityDexSummary" style="margin:2px 2px 10px;"></div>
+    <div class="grid" id="abilityDexGrid"></div>
+  </section>
+
+  <!-- ===== REGIONS VIEW ===== -->
+  <section class="view" id="view-regions">
+    <div class="section-head">
+      <div>
+        <h2>Your Regions</h2>
+        <p>Every region is its own independent dex — build one per world, campaign, or idea.</p>
+      </div>
+    </div>
+    <div class="cart-grid" id="cartGrid"></div>
+  </section>
+
+  <!-- ===== SETTINGS VIEW ===== -->
+  <section class="view" id="view-settings">
+    <div class="section-head">
+      <div>
+        <h2>Settings</h2>
+        <p>Tune how FIELDDEX looks and manage your data.</p>
+      </div>
+    </div>
+    <div class="settings-block">
+      <h3>Display Theme</h3>
+      <p>Pick a palette — it re-tints the whole chassis, including the scanner readout.</p>
+      <div class="theme-options">
+        <div class="theme-card" data-theme="dark" id="themeDarkCard">
+          <div class="theme-preview"><span style="background:#14171c;"></span><span style="background:#20242c;"></span><span style="background:#5fd68c;"></span></div>
+          <h4>Dark Mode</h4>
+          <p>Ink black chassis with a phosphor-green scanner glow.</p>
+        </div>
+        <div class="theme-card" data-theme="light" id="themeLightCard">
+          <div class="theme-preview"><span style="background:#fff6f5;"></span><span style="background:#ffffff;border:1px solid #f0d3ce;"></span><span style="background:#cc2b2b;"></span></div>
+          <h4>Light Mode</h4>
+          <p>Classic red-and-white Pokédex chassis.</p>
+        </div>
+        <div class="theme-card" data-theme="gameboy" id="themeGameboyCard">
+          <div class="theme-preview"><span style="background:#9bbc0f;"></span><span style="background:#c9dc8f;"></span><span style="background:#306230;"></span></div>
+          <h4>Game Boy Mode</h4>
+          <p>Classic monochrome-green LCD, just like the original pocket dex.</p>
+        </div>
+      </div>
+    </div>
+    <div class="settings-block">
+      <h3>Export / Import</h3>
+      <p>Back up your regions and creatures as a JSON file, or load one back in.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button class="btn-secondary" id="exportBtn">⬇ Export JSON</button>
+        <button class="btn-secondary" id="importBtn">⬆ Import JSON</button>
+        <input type="file" id="importFile" accept="application/json" style="display:none;">
+      </div>
+    </div>
+    <div class="settings-block">
+      <h3>Advanced Battle Systems Reference</h3>
+      <p>Framework notes for the mechanics wired into the Battle Simulator engine. Set these fields on a move (or its "Generate Shield" effect) from the Move Editor, or by hand-editing an exported JSON entry. Every example move below is now live in the starter roster — not just documentation — so you can open a creature's Moves list or run a Battle Simulator match to see it actually resolve: <b>Molten Moat</b> on Emberling, <b>Bramble Ward</b>, <b>Last Stand Slam</b> &amp; <b>Shell Retort</b> on Mossapod, <b>Static Bulwark</b>, <b>Afterimage Strike</b> &amp; <b>Velocity Fang</b> on Voltispire, and <b>Shadow Ember</b> &amp; <b>Executioner's Mark</b> on Umbra Cindrake. Any move carrying one of these mechanics also now shows a matching pill and a "⚙" summary line on its card.</p>
+
+      <div style="margin-top:14px;">
+        <h4 style="margin:0 0 4px;font-family:'Space Grotesk',sans-serif;">1. Shield / Barrier Tags &amp; Reactive Triggers</h4>
+        <p style="margin:0 0 8px;">A move's "Generate Shield" effect now carries a <b>Reaction</b> field (<code>shieldReaction</code>) with three settings: <b>None</b> (a purely defensive barrier), <b>Direct Damage</b> — reflects <code>shieldReactionValue</code>% of the shield-owner's max HP onto whoever gets blocked (a Thorns/Spikes-style punish) — or <b>Status Infliction</b> — inflicts <code>shieldReactionStatus</code> on the attacker instead, gated by <code>shieldReactionChance</code>. By default the reaction only fires against moves tagged "contact" (<code>shieldReactionContactOnly</code>), so ranged attacks aren't punished by a physical barrier.</p>
+        <div style="display:grid;gap:8px;">
+          <div style="background:var(--ink-2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
+            <b>Bramble Ward</b> <span style="color:var(--slate);font-size:12px;">— Grass, Shield</span>
+            <p style="margin:4px 0 0;font-size:13px;color:var(--slate);">Raises a thorned barrier for 3 turns. Any contact move that hits it reflects 12.5% of the user's max HP back onto the attacker. Reaction: Direct Damage, Contact Only.</p>
+          </div>
+          <div style="background:var(--ink-2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
+            <b>Molten Moat</b> <span style="color:var(--slate);font-size:12px;">— Fire, Shield</span>
+            <p style="margin:4px 0 0;font-size:13px;color:var(--slate);">Surrounds the user with a ring of magma that absorbs 4 hits. Contact moves that strike it have a 60% chance to Burn the attacker. Reaction: Status Infliction (Burn), Contact Only, Chance 60%.</p>
+          </div>
+          <div style="background:var(--ink-2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
+            <b>Static Bulwark</b> <span style="color:var(--slate);font-size:12px;">— Electric, Shield</span>
+            <p style="margin:4px 0 0;font-size:13px;color:var(--slate);">A crackling energy wall that blocks 2 hits of any category (not just contact). Every blocked hit has a 100% chance to Paralyze the attacker. Reaction: Status Infliction (Paralysis), Contact Only = off.</p>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:18px;">
+        <h4 style="margin:0 0 4px;font-family:'Space Grotesk',sans-serif;">2. Accuracy, Dodge &amp; Precision</h4>
+        <p style="margin:0 0 8px;">A move's own <code>accuracy</code> value (0–1) is now multiplied by a live Dodge factor computed from both fighters' effective Speed (base stat × active stat stage) before the hit roll: <code>finalHitChance = accuracy × dodgeMult</code>, where <code>dodgeMult = clamp(0.5, 1.2, 1 − ((defSpeed − atkSpeed) / (defSpeed + atkSpeed)) × 0.5)</code>. Equal Speed leaves accuracy untouched; a much faster target is meaningfully harder to hit (down to a 50% floor), and a much faster attacker gets a small bump (up to a 120% ceiling) — Speed always matters, but a move's base Accuracy is never made pointless. Tag a move <code>unavoidable</code> (or <code>undodgeable</code>) to skip this multiplier — and the accuracy roll entirely — so it always connects, Shadow Ember-style.</p>
+        <p style="margin:0 0 8px;"><b>Dodge Chance.</b> A move field (0–100%, default 0) that raises its USER's own chance to dodge whatever the opponent throws at them THAT SAME ROUND — layered on top of the Speed-based dodgeMult above, not a replacement for it: <code>totalDodgeMult = dodgeMult × (1 − dodgeChance)</code>. It's read off whichever move a fighter picks that turn, so it's only active for rounds they actually use the evasive move — a Quick Attack-style move a fighter can lean on repeatedly, not a one-time buff. When it's specifically the Dodge Chance (not raw Speed) that turns a would-be hit into a miss, the log calls it out by name instead of the usual Speed-dodge line: <code>"[Defender] used [Move] and dodged the attack!"</code> — naming the evasive move itself rather than the attacker's move, so it's clear at a glance which fighter's own tech saved them.</p>
+        <div style="background:var(--ink-2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
+          <b>Velocity Fang</b> <span style="color:var(--slate);font-size:12px;">— Normal, Dodge Chance 35%</span>
+          <p style="margin:4px 0 0;font-size:13px;color:var(--slate);">A frenzied, blink-fast bite — using it also gives its own user a 35% bonus chance to dodge the opponent's attack that same round. Field: <code>dodgeChance: 35</code>.</p>
+        </div>
+        <div style="background:var(--ink-2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-top:8px;">
+          <b>Executioner's Mark</b> <span style="color:var(--slate);font-size:12px;">— Dark, Unavoidable</span>
+          <p style="margin:4px 0 0;font-size:13px;color:var(--slate);">A curse-laced strike that always finds its target regardless of Speed or evasion. Tags: <code>unavoidable</code>.</p>
+        </div>
+      </div>
+
+
+      <div style="margin-top:18px;">
+        <h4 style="margin:0 0 4px;font-family:'Space Grotesk',sans-serif;">3. Speed-Scaling Offense</h4>
+        <p style="margin:0 0 8px;">A move's <code>speedScaling</code> field selects a paradigm, with <code>speedScalingFactor</code> (default 0.5) tuning the strength — applied as a straight multiplier alongside type effectiveness and the other damage modifiers:</p>
+        <ul style="margin:0 0 8px;padding-left:18px;font-size:13px;color:var(--slate);">
+          <li><b>relativeFaster</b> — bonus damage that scales with how much faster the user is than the target this turn; caps at +factor once the user is ~2× the target's Speed.</li>
+          <li><b>relativeSlower</b> — bonus damage that scales with how much slower the user is than the target; rewards outlasting a faster foe before striking.</li>
+          <li><b>absolute</b> — base power scales directly off the user's own raw Speed stat, independent of the target entirely.</li>
+        </ul>
+        <div style="display:grid;gap:8px;">
+          <div style="background:var(--ink-2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
+            <b>Afterimage Strike</b> <span style="color:var(--slate);font-size:12px;">— Fighting, Relative (Faster)</span>
+            <p style="margin:4px 0 0;font-size:13px;color:var(--slate);">Vanishes and reappears behind the target. Deals up to 50% bonus damage the faster the user is compared to the target. speedScaling: relativeFaster, factor 0.5.</p>
+          </div>
+          <div style="background:var(--ink-2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
+            <b>Last Stand Slam</b> <span style="color:var(--slate);font-size:12px;">— Ground, Relative (Slower)</span>
+            <p style="margin:4px 0 0;font-size:13px;color:var(--slate);">A crushing counter-blow that hits harder the more the user is outsped by its target. speedScaling: relativeSlower, factor 0.6.</p>
+          </div>
+          <div style="background:var(--ink-2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
+            <b>Velocity Fang</b> <span style="color:var(--slate);font-size:12px;">— Normal, Absolute</span>
+            <p style="margin:4px 0 0;font-size:13px;color:var(--slate);">A frenzied bite whose force scales purely with the user's own raw Speed. speedScaling: absolute, factor 0.5 (roughly +0.5% power per Speed point).</p>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:18px;">
+        <h4 style="margin:0 0 4px;font-family:'Space Grotesk',sans-serif;">4. Move Priority &amp; Counter Mechanics</h4>
+        <p style="margin:0 0 8px;">Every move now carries a <code>priority</code> value from <b>-3 to +3</b> (default 0), set from the dropdown next to Type/Category in the Move Editor. Before Speed is ever checked, both fighters' <em>chosen</em> moves are compared: whichever priority is strictly higher acts first that round, full stop — a +1 priority move always beats a 0-priority move even against a much faster opponent. Equal priority on both sides falls back to the existing Speed-based order untouched. An ability's First-Strike Priority Hook (Tailwind-style) is checked afterward and can still override the result.</p>
+        <p style="margin:0 0 8px;">A move flagged with <b>Counter Mechanics</b> (<code>counterMove.enabled</code>) throws out its own Base Power entirely. Instead, the engine tracks each fighter's <code>turnState</code> — the exact damage amount and damage type (Physical/Special) it was hit with THIS round — and the Counter move reflects <code>counterMove.multiplier</code>× that number straight back at the attacker, completely bypassing the target's Def/SpD stat and stage changes (the output comes from the incoming damage number, not a fresh atk/def calculation). <code>counterMove.damageType</code> gates which incoming hits it can answer: <b>physical</b> (Counter-style), <b>special</b> (Mirror Coat-style), or <b>any</b> (Metal Burst-style, answers either). If the user wasn't hit at all this round, or was hit by a damage type that doesn't match the filter, the move simply fails with no damage and no secondary effects. <code>turnState</code> is wiped clean for both sides at the end of every round, so a Counter move can never reach back into a previous turn's hit.</p>
+        <div style="background:var(--ink-2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
+          <b>Shell Retort</b> <span style="color:var(--slate);font-size:12px;">— Ground, Counter, Priority -3</span>
+          <p style="margin:4px 0 0;font-size:13px;color:var(--slate);">Braces behind its shell and slams back with double whatever physical damage it just took this round. counterMove: damageType physical, multiplier 2. Set to -3 priority so it always resolves last — after the hit it's answering has already landed.</p>
+        </div>
+      </div>
+
+      <div style="margin-top:14px;">
+        <h4 style="margin:0 0 4px;font-family:'Space Grotesk',sans-serif;">5. Terastallization (Manual Item Activation)</h4>
+        <p style="margin:0 0 8px;">An item can now carry a <code>teraType</code> and a <code>teraMove</code> alongside a <b>ON_USER_INTENT</b> effect (<code>trigger: "onUserIntent", action: "terastallize"</code>) — a manual-activation category distinct from the existing battleStart/onUse/turnEnd/onTakeDamage/onDealDamage triggers, meant to be popped during turn selection rather than fired off a passive condition. Once per battle, <code>activateTeraState()</code> validates the trigger, swaps the holder's typing to <code>teraType</code>, and injects the item's Dynamic Move (Tera Blast by default — its Type always matches the holder's current Tera Type and its Physical/Special category is recalculated live from whichever of the holder's Attack or Sp. Atk is higher) into the holder's active moveset for the rest of the fight via <code>injectTemporaryMove()</code>, which never touches the holder's stored/base movepool.</p>
+        <p style="margin:0 0 8px;">STAB is recalculated Tera-aware from that point on: a move matching the new Tera Type gets <b>2×</b> if that type was also one of the holder's original types, or the standard <b>1.5×</b> otherwise; a move matching one of the holder's ORIGINAL types still gets its standard 1.5× even after Terastallizing. The special <b>Stellar</b> Tera Type is the one exception — it doesn't overwrite the holder's typing at all, it just guarantees every one of the holder's own move types keeps its normal STAB.</p>
+        <div style="background:var(--ink-2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
+          <b>Tera Orb</b> <span style="color:var(--slate);font-size:12px;">— Held Item, teraType: configurable</span>
+          <p style="margin:4px 0 0;font-size:13px;color:var(--slate);">Once per battle, Terastallizes the holder into the Orb's configured Tera Type and injects Tera Blast. See the Item Dex for the full effect row.</p>
+        </div>
+      </div>
+
+      <div style="margin-top:14px;">
+        <h4 style="margin:0 0 4px;font-family:'Space Grotesk',sans-serif;">6. Multi-Hit Scaling</h4>
+        <p style="margin:0 0 8px;">Any move with a Hits Count above 1 now carries a <code>multiHitScaling</code> field (<b>Flat</b> / <b>Ramp Up</b> / <b>Ramp Down</b>) plus a <code>multiHitScalingPct</code> percentage, set right next to the Hits Count dropdown in the Move Editor. <b>Flat</b> is the original behavior — every hit rolls the same Base Power. <b>Ramp Up/Down</b> scale each hit AFTER the first by ±<code>multiHitScalingPct</code>%, compounding per hit — a 3-hit Ramp Down move at 20% deals its 1st hit at full power, its 2nd hit at 80%, its 3rd hit at 64% (0.8²), not a flat 60%. Each hit still rolls its own independent crit/accuracy/variance exactly as before — only the Base Power scaling is new.</p>
+        <div style="background:var(--ink-2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
+          <b>Example</b> <span style="color:var(--slate);font-size:12px;">— any move, Hits Count 5</span>
+          <p style="margin:4px 0 0;font-size:13px;color:var(--slate);">Ramp Up at 15%: hits land at roughly 100% → 115% → 132% → 152% → 175% of base power — a flurry that builds momentum. Ramp Down at 15% (Triple Kick/Triple Axel-style, but 5 hits and tunable): 100% → 85% → 72% → 61% → 52% — a strong opener that tapers off.</p>
+        </div>
+      </div>
+    </div>
+    <div class="settings-block">
+      <h3>Utility &amp; Hybrid Ability Systems Reference</h3>
+      <p>A second layer of mechanics built on top of the core engine above — blurring the line between Move and Ability, spreading status around the field, and locking a fighter into a multi-turn commitment.</p>
+
+      <div style="margin-top:14px;">
+        <h4 style="margin:0 0 4px;font-family:'Space Grotesk',sans-serif;">1. Blurring Abilities &amp; Moves</h4>
+        <p style="margin:0 0 8px;"><b>Active Abilities.</b> An Ability flagged <code>manualCast</code> stops being purely reactive (gated on a condition like "HP below 33%") and is folded straight into its owner's movepool as a real, selectable action for the rest of the fight — with its own PP (<code>manualCastPP</code>), Cooldown (<code>manualCastCooldown</code>), and either an attack profile (<code>manualCastCategory</code> Physical/Special + <code>manualCastBasePower</code>/<code>manualCastType</code>/<code>manualCastAccuracy</code>) or a pure Status-category cast that just runs the ability's own <code>effects</code> array — the same Dynamic Multi-Effect Sequence Array a Move uses, so a cast ability can raise a hazard, buff a stat, inflict a status, or anything else a move effect can do. <b>Edge case:</b> if the ability's condition-based passive/active triggers are ALSO configured, both can coexist — the automatic trigger still fires reactively, while manualCast additionally makes it choosable as its own turn.</p>
+        <p style="margin:0 0 8px;"><b>Passive Moves.</b> Any Stat Modifier or Field Hazard effect set to <b>0 duration</b> is already permanent by default in this engine — once a move lands it, the buff/debuff/hazard just sits there without needing to be re-selected. The "Passive Move" pattern here is simply a Status-category move whose entire payload is one of these zero-duration effects: cast it once, then spend future turns on other moves while it keeps working in the background. <b>Edge case:</b> a hazard or stat mod set to a fixed positive duration will still expire normally — "passive" and "permanent" aren't the same setting, use duration 0 deliberately for the latter.</p>
+        <div style="display:grid;gap:8px;">
+          <div style="background:var(--ink-2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
+            <b>Overclock Vent</b> <span style="color:var(--slate);font-size:12px;">— Electric, Active Ability</span>
+            <p style="margin:4px 0 0;font-size:13px;color:var(--slate);">Normally a passive that boosts damage below 33% HP — but flagged Manually Castable lets the user vent it early as a Special attack (Type Electric, BP 70, Acc 100%, PP 5, Cooldown 3) instead of waiting for the HP threshold.</p>
+          </div>
+          <div style="background:var(--ink-2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
+            <b>Root Anchor</b> <span style="color:var(--slate);font-size:12px;">— Grass, Passive Move</span>
+            <p style="margin:4px 0 0;font-size:13px;color:var(--slate);">A Status move that raises the user's Defense and Sp. Def by 1 stage with Stat Modifier Duration set to 0 (permanent) — cast once at the start of a fight and never needed again.</p>
+          </div>
+          <div style="background:var(--ink-2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
+            <b>Caltrop Field</b> <span style="color:var(--slate);font-size:12px;">— Ground, Passive Move</span>
+            <p style="margin:4px 0 0;font-size:13px;color:var(--slate);">A Status move using the Field Hazard effect (non-stacking, flat damage) to lay a permanent entry hazard on the opposing field with a single cast.</p>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:18px;">
+        <h4 style="margin:0 0 4px;font-family:'Space Grotesk',sans-serif;">2. Specialized Status &amp; Omni-Boost Mechanics</h4>
+        <p style="margin:0 0 8px;"><b>Status Transfer/Swap.</b> A move using the new Status Transfer/Swap effect can <code>give</code> the user's own status to the target (curing the user), <code>steal</code> the target's status onto the user (curing the target), or <code>swap</code> whatever both sides currently carry — including a status-free side wiping the other's condition entirely. <b>Edge case:</b> a transfer that would land on a type immune to that status (e.g. moving Burn onto a Fire type) simply fizzles and the original holder keeps it — it never destroys a status just because the destination can't accept it.</p>
+        <p style="margin:0 0 8px;"><b>Omni-Boost Secondary Effects.</b> The new Omni-Boost effect raises Atk/Def/Sp.Atk/Sp.Def/Speed by the same number of stages simultaneously, gated by the same per-effect Chance roll every other secondary effect already uses (10%, 30%, 100%, whatever the move calls for). <b>Edge case:</b> an ability that blocks stat drops/raises on a given side is checked stat-by-stat — if it blocks buffs entirely, the Omni-Boost simply does nothing to that side that turn rather than partially applying.</p>
+        <div style="display:grid;gap:8px;">
+          <div style="background:var(--ink-2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
+            <b>Plague Kiss</b> <span style="color:var(--slate);font-size:12px;">— Poison, Status Transfer</span>
+            <p style="margin:4px 0 0;font-size:13px;color:var(--slate);">Transfer Mode: steal. Rips whatever status condition the target is carrying and inflicts it on the user's own opponent-facing side instead — a desperation cure for the user disguised as an attack.</p>
+          </div>
+          <div style="background:var(--ink-2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
+            <b>Contagion Trade</b> <span style="color:var(--slate);font-size:12px;">— Poison, Status Transfer</span>
+            <p style="margin:4px 0 0;font-size:13px;color:var(--slate);">Transfer Mode: swap. The user hands its own Badly Poisoned counter to the target in exchange for whatever (if anything) the target was dealing with.</p>
+          </div>
+          <div style="background:var(--ink-2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
+            <b>Ascendant Surge</b> <span style="color:var(--slate);font-size:12px;">— Fairy, Omni-Boost</span>
+            <p style="margin:4px 0 0;font-size:13px;color:var(--slate);">A support move with a 10% chance (Omni-Boost, +1 stage, Target Self) to raise all five primary stats at once alongside its normal minor healing effect.</p>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:18px;">
+        <h4 style="margin:0 0 4px;font-family:'Space Grotesk',sans-serif;">3. Multi-Turn Lock-In Attacks</h4>
+        <p style="margin:0 0 8px;">Apply the existing <b>Repeat</b> status (Status Overlay effect, Status Effect = Repeat, Duration 2–3 turns) to the user itself on cast: while it's active, move-selection is forced to keep re-using whatever move was just used, bypassing normal AI pool selection entirely. When the Repeat status's duration runs out, its configured <b>Lock-In End Effect</b> pays off automatically: <code>confusion</code> (default — Outrage/Thrash-style, the user snaps out of the frenzy and becomes Confused for 2–3 turns), <code>cooldown</code> (the just-repeated move is locked out for <code>lockInCooldownTurns</code> instead of confusing anyone), or <code>none</code> (a clean end with no drawback, for a lower-risk lock-in). <b>Edge case:</b> if the locked move runs out of PP mid-lock, selection falls through to normal rules for that turn (Struggle if nothing else is usable) — but the Repeat status itself keeps ticking down and still pays off its end effect on schedule even if a turn or two were spent elsewhere.</p>
+        <div style="display:grid;gap:8px;">
+          <div style="background:var(--ink-2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
+            <b>Frenzied Gale</b> <span style="color:var(--slate);font-size:12px;">— Flying, Lock-In</span>
+            <p style="margin:4px 0 0;font-size:13px;color:var(--slate);">A powerful Physical attack that applies Repeat to the user for 2–3 turns. Lock-In End Effect: confusion (default) — the user thrashes on repeat, then staggers dazed once the storm passes.</p>
+          </div>
+          <div style="background:var(--ink-2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
+            <b>Overdrive Barrage</b> <span style="color:var(--slate);font-size:12px;">— Steel, Lock-In</span>
+            <p style="margin:4px 0 0;font-size:13px;color:var(--slate);">Fires on repeat for 3 turns at high Base Power. Lock-In End Effect: cooldown (2 turns) — the mechanism needs to physically cool down afterward instead of confusing its pilot.</p>
+          </div>
+          <div style="background:var(--ink-2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;">
+            <b>Trance Dance</b> <span style="color:var(--slate);font-size:12px;">— Psychic, Lock-In</span>
+            <p style="margin:4px 0 0;font-size:13px;color:var(--slate);">A lower-commitment 2-turn lock-in with Lock-In End Effect set to none — a safer option for a moveset that wants the repeat-attack pressure without the usual drawback.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="settings-block">
+      <h3>Danger Zone</h3>
+      <p>Permanently erase every region and creature entry stored in this browser.</p>
+      <button class="btn-danger" id="resetAllBtn">Reset All Data</button>
+    </div>
+  </section>
+
+  <!-- ===== PER-FAKEMON DETAIL PAGE ===== -->
+  <section class="view" id="view-detail">
+    <div class="detail-page">
+      <button class="back-btn" id="detailBackBtn">← Back to Dex</button>
+      <div class="detail-card" id="detailCardContent"></div>
+    </div>
+  </section>
+</div>
+
+<!-- Add / Edit Pokemon Modal -->
+<div class="overlay" id="formOverlay">
+  <div class="modal">
+    <div class="modal-head">
+      <h2 id="formTitle">Log New Creature</h2>
+      <button class="modal-close" id="closeForm">×</button>
+    </div>
+    <div class="modal-body">
+      <form id="pokeForm" novalidate>
+        <div class="field">
+          <label>Name</label>
+          <input type="text" id="f-name" required placeholder="e.g. Cindrake">
+        </div>
+        <div class="field">
+          <label>Region (Dex)</label>
+          <select id="f-region"></select>
+        </div>
+        <div class="row2">
+          <div class="field">
+            <label>Category</label>
+            <input type="text" id="f-category" placeholder="e.g. Ember Wyrm Pokémon">
+          </div>
+          <div class="field">
+            <label>Creator (your name)</label>
+            <input type="text" id="f-creator" placeholder="e.g. you">
+          </div>
+        </div>
+        <div class="field">
+          <label>Types (choose up to 2)</label>
+          <div class="type-grid" id="typeGrid"></div>
+        </div>
+        <div class="field">
+          <label>Fan Art Image</label>
+          <input type="text" id="f-image" placeholder="https://… link to fan art (optional)">
+          <div class="field-hint">No art yet? Leave blank and your sprite icon below will be used instead — you can add real fan art anytime later.</div>
+        </div>
+        <div class="field">
+          <label>Sprite Icon</label>
+          <div class="emoji-row" id="emojiRow"></div>
+        </div>
+        <div class="field">
+          <label>Custom Icon Emoji</label>
+          <input type="text" id="f-custom-icon" placeholder="Paste any emoji glyph to override the picker above (optional)" maxlength="8">
+          <div class="field-hint">If filled in, this exact glyph is used everywhere instead of the Sprite Icon picker — creature grids, team compilation chips, and combat interfaces.</div>
+        </div>
+        <div class="row2">
+          <div class="field">
+            <label>Height (m)</label>
+            <input type="number" id="f-height" step="0.1" min="0" placeholder="1.2">
+          </div>
+          <div class="field">
+            <label>Weight (kg)</label>
+            <input type="number" id="f-weight" step="0.1" min="0" placeholder="24.5">
+          </div>
+        </div>
+        <div class="field">
+          <label>Rarity</label>
+          <select id="f-rarity">
+            <option value="common">Common</option>
+            <option value="uncommon">Uncommon</option>
+            <option value="rare">Rare</option>
+            <option value="legendary">Legendary</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Field Notes / Description</label>
+          <textarea id="f-desc" rows="3" placeholder="Describe behavior, habitat, lore…"></textarea>
+        </div>
+        <div class="field">
+          <label>Base Stats</label>
+          <div id="statFields"></div>
+        </div>
+
+        <div class="field">
+          <label>Evolves From (pre-evolution)</label>
+          <select id="f-preevo"></select>
+          <div class="link-hint">Pick an existing entry this one evolves from. Its later evolutions are shown automatically — no need to set them on the earlier form.</div>
+        </div>
+        <div class="field" id="preEvoMethodField" style="display:none;">
+          <label>How it evolves from that pre-evolution</label>
+          <input type="text" id="f-preevo-method" placeholder="e.g. Level 34, Trade holding a Metal Coat">
+        </div>
+        <div class="field">
+          <label>Regional / Alternate Variant Of</label>
+          <select id="f-variantof"></select>
+          <div class="link-hint">Pick the original entry if this is a regional form, alternate coloring, or other variant of it.</div>
+        </div>
+
+        <div class="field">
+          <label>Abilities</label>
+          <div class="dyn-list" id="abilityFields"></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button type="button" class="add-row-btn" id="addAbilityBtn">＋ Add Ability</button>
+            <button type="button" class="add-row-btn" id="importAbilityBtn">⤵ Import from Ability Dex</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Moves</label>
+          <div class="dyn-list" id="moveFields"></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button type="button" class="add-row-btn" id="addMoveBtn">＋ Add Move</button>
+            <button type="button" class="add-row-btn" id="importMoveBtn">⤵ Import from Move Dex</button>
+          </div>
+        </div>
+
+        <details class="mv-advanced-details">
+        <summary class="mv-advanced-summary">⚙ Advanced creature options <span class="mv-advanced-summary-sub">(optional — Mega Evolutions, type matchup overrides, gender, food preferences)</span></summary>
+
+        <div class="field">
+          <label>Mega Evolutions</label>
+          <div class="field-hint">Optional. Gives this creature a second, more powerful form it can switch into mid-battle under conditions you set (like needing to hold a specific item). Only add this if you want that mechanic — most creatures don't need one.</div>
+          <div class="dyn-list" id="megaProfiles"></div>
+          <button type="button" class="add-row-btn" id="addMegaProfileBtn">＋ Add Mega Evolution</button>
+        </div>
+
+        <div class="field">
+          <label>Tag Matchups (extra weaknesses/resistances)</label>
+          <div class="field-hint">Optional. Give this specific creature a bonus weakness or resistance to a move tag (e.g. always take double damage from "Bite" moves) — separate from its normal type matchups, and it applies no matter what Ability is active. 0.5 = resists it, 2 = weak to it, 0 = immune to it.</div>
+          <div class="dyn-list" id="tagMatchupFields"></div>
+          <button type="button" class="add-row-btn" id="addTagMatchupBtn">＋ Add Tag Matchup</button>
+        </div>
+
+        <div class="field">
+          <label>Pokémon Tags</label>
+          <div class="field-hint">Optional free-text labels (comma-separated) — e.g. "levitating", "boss", "heavyweight". A few are recognized by the battle engine: "levitating" gives immunity to Terrain effects (like being Flying-type); "genderfluid" allows Infatuation with anyone.</div>
+          <input type="text" id="f-tags" placeholder="e.g. levitating, boss, heavyweight">
+        </div>
+
+        <div class="field">
+          <label>Gender</label>
+          <div class="field-hint">"Both" randomly picks Male or Female fresh each battle (only matters if something in battle checks gender).</div>
+          <select id="f-gender-pool">
+            <option value="Genderless">Genderless</option>
+            <option value="Male">Male Only</option>
+            <option value="Female">Female Only</option>
+            <option value="Both">Both (rolled randomly per battle)</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label>Tastes (food preferences)</label>
+          <div class="field-hint">Optional. Controls how much this creature benefits from flavor-based berries/items.</div>
+          <div class="dyn-row-meta" style="flex-wrap:wrap;gap:10px;">
+            <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--slate);">Sweet
+              <select id="f-taste-sweet"><option value="neutral">Neutral</option><option value="likes">Likes</option><option value="hates">Hates</option></select>
+            </label>
+            <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--slate);">Spicy
+              <select id="f-taste-spicy"><option value="neutral">Neutral</option><option value="likes">Likes</option><option value="hates">Hates</option></select>
+            </label>
+            <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--slate);">Sour
+              <select id="f-taste-sour"><option value="neutral">Neutral</option><option value="likes">Likes</option><option value="hates">Hates</option></select>
+            </label>
+            <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--slate);">Bitter
+              <select id="f-taste-bitter"><option value="neutral">Neutral</option><option value="likes">Likes</option><option value="hates">Hates</option></select>
+            </label>
+            <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--slate);">Dry
+              <select id="f-taste-dry"><option value="neutral">Neutral</option><option value="likes">Likes</option><option value="hates">Hates</option></select>
+            </label>
+            <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--slate);">Savory
+              <select id="f-taste-savory"><option value="neutral">Neutral</option><option value="likes">Likes</option><option value="hates">Hates</option></select>
+            </label>
+          </div>
+        </div>
+        </details>
+
+        <div class="form-actions">
+          <button type="button" class="btn-secondary" id="cancelForm">Cancel</button>
+          <button type="submit" class="btn-primary" id="submitFormBtn">Save Entry</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- New Region Modal -->
+<div class="overlay" id="regionOverlay">
+  <div class="modal" style="max-width:440px;">
+    <div class="modal-head">
+      <h2 id="regionFormTitle">New Region</h2>
+      <button class="modal-close" id="closeRegionForm">×</button>
+    </div>
+    <div class="modal-body">
+      <form id="regionForm" novalidate>
+        <div class="field">
+          <label>Region Name</label>
+          <input type="text" id="r-name" required placeholder="e.g. Umbra Isles">
+        </div>
+        <div class="field">
+          <label>Subtitle</label>
+          <input type="text" id="r-subtitle" placeholder="e.g. Fog-shrouded volcanic archipelago">
+        </div>
+        <div class="field">
+          <label>Cartridge Color</label>
+          <div class="swatch-row" id="swatchRow"></div>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn-secondary" id="cancelRegionForm">Cancel</button>
+          <button type="submit" class="btn-primary">Save Region</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ===== ITEM FORM MODAL (Item Dex CRUD) ===== -->
+<div class="overlay" id="itemOverlay">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-head">
+      <h2 id="itemFormTitle">New Item</h2>
+      <button class="modal-close" id="closeItemForm">×</button>
+    </div>
+    <div class="modal-body">
+      <form id="itemForm" novalidate>
+        <div class="field">
+          <label>Item Name</label>
+          <input type="text" id="it-name" required placeholder="e.g. Leftovers">
+        </div>
+        <div class="field">
+          <label>Type</label>
+          <select id="it-type">
+            <option value="held">Held (stays all battle)</option>
+            <option value="consumable">Consumable (used once)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Flavor <span style="color:var(--slate);text-transform:none;font-weight:400;">(food items only — leave "None" for key items, held stat sticks, etc.)</span></label>
+          <select id="it-flavor"></select>
+          <div class="field-hint">If set, a Pokémon's Taste Preference for this flavor scales the item's effects when it's actually consumed: Liked = bigger effect, Disliked = weaker effect + a chance of Confusion, Neutral = no change.</div>
+        </div>
+        <div class="field">
+          <label>Max Uses per Battle <span style="color:var(--slate);text-transform:none;font-weight:400;">(0 = unlimited, fires every time its trigger is met)</span></label>
+          <input type="number" id="it-maxuses" min="0" step="1" value="1">
+        </div>
+        <div class="field">
+          <label>Tera Type <span style="color:var(--slate);text-transform:none;font-weight:400;">(Terastallization Engine — "none" disables Tera behavior entirely)</span></label>
+          <select id="it-teratype"></select>
+          <div class="field-hint">Once per battle, the holder can manually Terastallize into this Type — add an Effect below with Trigger <b>onUserIntent</b> and Action <b>Terastallize</b> to actually make it activatable.</div>
+        </div>
+        <div class="field">
+          <label class="dyn-hidden-check"><input type="checkbox" id="it-notera"> No Tera Required — learn the Dynamic Move below at battle start</label>
+          <div class="field-hint">Skips the Terastallize gate entirely: the holder knows and can use the move below from turn one, with no typing change and no need to spend the once-per-battle Tera activation.</div>
+        </div>
+        <div class="field tera-move-block">
+          <label class="rule-label">Dynamic Move Injector <span style="color:var(--slate);text-transform:none;font-weight:400;">(the full move builder — Base Power, Accuracy, PP, Tags, Effects, secondary Status/Stat/Heal/Hazard actions, everything — spliced into the holder's active moveset the moment it Terastallizes)</span></label>
+          <div class="dyn-list" id="it-teramove-list"></div>
+          <button type="button" class="add-row-btn" id="itImportMoveBtn">⤵ Import from Move Dex</button>
+          <div class="field-hint">Type and Category are always recalculated live (Type matches the holder's current Tera Type; Physical/Special follows whichever of Attack or Sp. Atk is higher) — so those two fields on the move below are ignored. Everything else you set — Base Power, Accuracy, PP, Tags, and any Effects you add — carries straight through to the injected move.</div>
+        </div>
+        <div class="field effects-block">
+          <label class="rule-label">Effects (unlimited — stack Heal, Stat Boost, Cure Status, Type Boost, etc. Use each effect's Priority to control which one fires first, and pick the onUse trigger for anything that should happen the instant this item is eaten/activated.)</label>
+          <div class="dyn-list" id="it-effects-list"></div>
+          <button type="button" class="add-row-btn" id="it-add-effect-btn">＋ Add Effect</button>
+        </div>
+        <div class="field">
+          <label>Immunities <span style="color:var(--slate);text-transform:none;font-weight:400;">(passive protection while held)</span></label>
+          <div class="dyn-row-meta" style="flex-wrap:wrap;">
+            <label class="dyn-hidden-check"><input type="checkbox" id="it-immune-freeze"> Freeze</label>
+            <label class="dyn-hidden-check"><input type="checkbox" id="it-immune-poison"> Poison</label>
+            <label class="dyn-hidden-check"><input type="checkbox" id="it-immune-burn"> Burn</label>
+            <label class="dyn-hidden-check"><input type="checkbox" id="it-immune-paralysis"> Paralysis</label>
+            <label class="dyn-hidden-check"><input type="checkbox" id="it-immune-sleep"> Sleep</label>
+            <label class="dyn-hidden-check"><input type="checkbox" id="it-immune-hazard"> Entry Hazard Immunity</label>
+          </div>
+        </div>
+        <div class="field">
+          <label>Deal Status Effect on Use <span style="color:var(--slate);text-transform:none;font-weight:400;">(fires the moment the holder enters battle)</span></label>
+          <div class="dyn-row-meta" style="flex-wrap:wrap;gap:10px;">
+            <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--slate);">Effect
+              <select id="it-status-effect"></select>
+            </label>
+            <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--slate);">Chance %
+              <input type="number" id="it-status-chance" min="0" max="100" step="1" value="100" style="width:80px;">
+            </label>
+            <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--slate);">Target
+              <select id="it-status-target">
+                <option value="opponent">Opponent</option>
+                <option value="self">Self</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <div class="field">
+          <label>Description</label>
+          <input type="text" id="it-desc" placeholder="Shown on the Item Dex card">
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn-secondary" id="cancelItemForm">Cancel</button>
+          <button type="submit" class="btn-primary">Save Item</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ===== IMPORT PICKER — shared by the Move Importer & Ability Importer. Lists grouped entries
+     pulled live from the Move Dex / Ability Dex, searchable by name, so a creator can pull an
+     existing move/ability into whatever they're currently editing and then tweak it from there. ===== -->
+<div class="overlay" id="importPickerOverlay">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-head">
+      <h2 id="importPickerTitle">Import Move</h2>
+      <button class="modal-close" id="closeImportPicker">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="search-wrap" style="margin-bottom:12px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="color:var(--slate)" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="importPickerSearch" placeholder="Search by name…">
+      </div>
+      <div id="importPickerList" style="display:flex;flex-direction:column;gap:8px;max-height:55vh;overflow-y:auto;"></div>
+      <div class="field-hint" id="importPickerEmpty" style="display:none;">Nothing matches yet — try a different search, or create it fresh with ＋ Add instead.</div>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="js/common/api-client.js"></script>
+<script src="js/common.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/ui-common.js"></script>
+<script src="js/ui-form-handler.js"></script>
+<script src="js/ui-dex-renderer.js"></script>
+<script src="js/ui-battle-interface.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

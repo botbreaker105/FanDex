@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FANDEX — Fakemon Registry</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
+<style>
+  /* Fanmade type colors (see FANMADE_TYPES in js/common.js). Light is a pale gold, so anything painted with it gets dark text. */
+  :root{ --t-cosmic:#4b3a9e; --t-light:#f4e3a1; --t-rubber:#e0559b; }
+  [style*="--t-light"]{ color:#14171c !important; }
+  /* Marks the 3 fields that are actually required to save a creature entry
+     (Name / Type / Description) — see the big comment above the
+     "Add / Edit Fakemon Modal" further down this file. */
+  .req-star{
+    color: var(--flame, #ff6b4a);
+    font-weight: 700;
+  }
+  /* Multi-image field (Pixel / Pixel Shiny / Artwork / Artwork Shiny) + its
+     live icon preview, used in the "More details" section of the creature
+     form. See resolveCreatureIcon() in js/ui-form-handler.js for the logic
+     that picks which of these actually gets shown as the icon. */
+  .img-slot-grid{
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    gap:10px 14px;
+  }
+  @media (max-width: 560px){
+    .img-slot-grid{ grid-template-columns: 1fr; }
+  }
+  .icon-preview-row{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin-top:10px;
+  }
+  .icon-preview-img{
+    width:48px;
+    height:48px;
+    object-fit:contain;
+    border-radius:8px;
+    background:var(--ink-2, #20242c);
+    border:1px solid var(--line, #33383f);
+  }
+  /* Crop/focus picker for a shared "group art" image — lets a creator click
+     the spot on a pasted image that corresponds to THIS creature, plus zoom
+     in, so several entries can reuse one Pinterest-style collage URL and
+     each just crop to their own character. See wireCropPicker() in
+     js/ui-form-handler.js for the click/drag + zoom logic, and
+     resolveCreatureIcon()/miniArtHtml() (js/ui-dex-renderer.js) for how the
+     stored {x,y,zoom} actually gets applied when rendering the icon. */
+  .crop-picker{ margin-top:8px; }
+  .crop-preview{
+    position:relative;
+    width:100%;
+    aspect-ratio:1/1;
+    max-width:160px;
+    border-radius:10px;
+    border:1px solid var(--line, #33383f);
+    background:var(--ink-2, #20242c) center/cover no-repeat;
+    cursor:crosshair;
+    overflow:hidden;
+  }
+  .crop-marker{
+    position:absolute;
+    width:16px;height:16px;margin:-8px 0 0 -8px;
+    border-radius:50%;
+    border:2px solid #fff;
+    background:var(--flame, #ff6b4a);
+    box-shadow:0 0 0 2px rgba(0,0,0,0.5);
+    pointer-events:none;
+    display:none;
+  }
+  .crop-controls{ display:flex; align-items:center; gap:8px; margin-top:6px; }
+  .crop-controls input[type=range]{ flex:1; }
+  .crop-reset-btn{
+    background:none;border:none;color:var(--slate);font-size:11px;
+    text-decoration:underline;cursor:pointer;padding:0;
+  }
+  .crop-reset-btn:hover{ color:var(--text-main); }
+  .field-row{ display:flex; gap:10px; }
+  .field-row > .field{ flex:1; }
+  /* Battle mode switch (1v1 / Random Battle). Wired in js/engine.js -> installBattleModeToggle(). */
+  .battle-mode-switch{ display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:0 0 14px; }
+  .battle-mode-btn{
+    padding:8px 16px; border-radius:999px; cursor:pointer; font:inherit; font-weight:600;
+    background:var(--ink-2, #20242c); color:var(--text-main, inherit);
+    border:1px solid var(--line, #33383f);
+  }
+  .battle-mode-btn.active{ background:var(--flame, #ff6b4a); color:#fff; border-color:transparent; }
+  .battle-mode-hint{ flex-basis:100%; font-size:12px; color:var(--slate, #9aa4b2); }
+
+  /* Loading spinner shown at startup. Hidden by js/main.js when the dex has loaded.
+     Uses the theme variables from css/styles.css so it matches Dark / Light / Gameboy. */
+  #appLoader{
+    position:fixed; inset:0; z-index:9999;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px;
+    background:var(--ink, #14171c);
+    transition:opacity .45s ease, visibility .45s ease;
+  }
+  #appLoader.hidden{ opacity:0; visibility:hidden; pointer-events:none; }
+  .loader-ring{
+    width:64px; height:64px; border-radius:50%;
+    border:6px solid var(--line, #2c313b);
+    border-top-color:var(--accent, #5fd68c);
+    animation:loaderSpin .8s linear infinite;
+  }
+  .loader-msg{ font-size:16px; font-weight:500; letter-spacing:.04em; color:var(--text-main, #f3f1ea); text-align:center; padding:0 16px; }
+  @keyframes loaderSpin{ to{ transform:rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce){ .loader-ring{ animation-duration:2.4s; } }
+</style>
+</head>
+<body>
+
+<div id="appLoader">
+  <div class="loader-ring"></div>
+  <div class="loader-msg" id="appLoaderMsg">Loading Fandex…</div>
+</div>
+
+<div class="shell">
+  <header class="device">
+    <div class="brand">
+      <div class="brand-lamp"></div>
+      <div>
+        <h1>FANDEX</h1>
+        <p>Fakemon Registry</p>
+      </div>
+    </div>
+    <div class="user-profile-bar" id="userProfileBar" style="display: none;">
+  <span class="user-name" id="userDisplayName">Trainer</span>
+  <button type="button" class="btn-logout" id="logoutBtn" title="Log out">⏻</button>
+</div>
+<button type="button" class="btn-new btn-login" id="openLoginBtn">Log In</button>
+    <div class="readout">
+      <div class="stat"><b id="statTotal">0</b><span>Entries</span></div>
+      <div class="stat"><b id="statRegions">0</b><span>Regions</span></div>
+      <div class="stat"><b id="statLegendary">0</b><span>Legendary</span></div>
+    </div>
+    <button class="btn-new" id="openAdd">＋ Log Creature</button>
+  </header>
+
+  <nav class="tabs">
+    <button data-tab="complete" class="active">Complete Dex</button>
+    <button data-tab="battle">⚔ Battle</button>
+    <button data-tab="items">🎒 Item Dex</button>
+    <button data-tab="movedex">📖 Move Dex</button>
+    <button data-tab="abilitydex">✨ Ability Dex</button>
+    <button data-tab="regions">Regions</button>
+    <button data-tab="settings">Settings</button>
+  </nav>
+
+  <!-- ===== COMPLETE DEX VIEW ===== -->
+  <section class="view active" id="view-complete">
+    <div class="filter-bar">
+      <div class="search-wrap">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="color:var(--slate)" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="searchInput" placeholder="Search by name or creator…">
+      </div>
+      <div class="chip-row">
+        <div class="filter-chip">
+          <button class="chip-btn" id="regionChipBtn">All Regions <span class="caret">▾</span></button>
+          <div class="chip-panel" id="regionChipPanel"></div>
+        </div>
+        <div class="filter-chip">
+          <button class="chip-btn" id="typeChipBtn">All Types <span class="caret">▾</span></button>
+          <div class="chip-panel" id="typeChipPanel"></div>
+        </div>
+        <div class="filter-chip">
+          <button class="chip-btn" id="rarityChipBtn">All Rarities <span class="caret">▾</span></button>
+          <div class="chip-panel" id="rarityChipPanel"></div>
+        </div>
+        <div class="filter-chip">
+          <button class="chip-btn" id="sortChipBtn">Sort: No. <span class="caret">▾</span></button>
+          <div class="chip-panel" id="sortChipPanel"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid" id="grid"></div>
+  </section>
+
+  <!-- ===== BATTLE VIEW ===== -->
+  <section class="view" id="view-battle">
+    <div class="section-head">
+      <div>
+        <h2>Battle Simulator</h2>
+        <p>Pit two creatures against each other, or roll a Random Battle: two teams of 6 bot-controlled Fakemon.</p>
+      </div>
+    </div>
+
+    <!-- ===== BATTLE MODE SWITCH — 1v1 (pick two fighters) or Random Battle (6 random Fakemon per side,
+         bot vs bot, with replacements when one faints). Anything marked class="battle-1v1-only" below is
+         hidden while Random Battle is selected. Logic lives in js/engine.js (installBattleModeToggle). ===== -->
+    <div class="battle-mode-switch" id="battleModeToggle">
+      <button type="button" class="battle-mode-btn active" id="battleMode1v1Btn" data-mode="1v1">⚔ 1v1</button>
+      <button type="button" class="battle-mode-btn" id="battleModeRandomBtn" data-mode="random">🎲 Random Battle</button>
+      <button type="button" class="battle-mode-btn" id="battleModeDoublesBtn" data-mode="doubles">👥 2v2 Random</button>
+      <span class="battle-mode-hint" id="battleModeHint"></span>
+    </div>
+
+    <!-- ===== BATTLE SEARCH BAR — narrows every picker below (Fighter A/B AND both Held Item
+         dropdowns) at once, so a big roster/item-list never means "scrolling hell" while setting
+         up a match. Name search matches battler names, move names on their kit, and item names.
+         Type filter narrows the two fighter pickers to battlers carrying that type. ===== -->
+    <div class="filter-bar battle-search-bar battle-1v1-only">
+      <div class="search-wrap">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="color:var(--slate)" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="battleSearchInput" placeholder="Search battlers, moves &amp; items…">
+      </div>
+      <div class="chip-row">
+        <div class="filter-chip">
+          <button class="chip-btn" id="battleTypeChipBtn">All Types <span class="caret">▾</span></button>
+          <div class="chip-panel" id="battleTypeChipPanel"></div>
+        </div>
+        <button type="button" class="chip-btn" id="battleSearchClearBtn" title="Clear search &amp; type filter">✕ Clear</button>
+      </div>
+      <div class="field-hint" id="battleSearchSummary" style="width:100%;"></div>
+    </div>
+
+    <label class="battle-fav-toggle battle-1v1-only">
+      <input type="checkbox" id="battleFavOnly"> Only show favorites in the pickers
+    </label>
+    <label class="battle-fav-toggle">
+      <input type="checkbox" id="allowMegaToggle"> Allow Mega Evolution
+      <input type="number" id="megaChancePct" min="0" max="100" value="50" style="width:56px;margin-left:8px;"> % chance per round
+    </label>
+    <label class="battle-fav-toggle">
+      Field Effect
+      <select id="fieldEffectSelect">
+        <option value="none">None</option>
+        <option value="grassy">Grassy Field (Grass types fight at 1.2× all stats and heal 5% Max HP each round)</option>
+        <option value="flood">Flood (Water types fight at 1.5× Speed and dodge more; everyone else is slowed and Fire moves are weakened; Flying types are immune)</option>
+        <option value="misty">Misty Terrain (Dragon-type moves deal 50% damage to grounded targets; grounded targets can't be Burned, Frozen, Paralyzed, Poisoned, or put to Sleep — Flying types and "levitating"-tagged Pokémon aren't affected)</option>
+        <option value="electric">Electric Terrain (Electric moves hit 1.3× harder; grounded targets can't fall asleep; Steel-type targets are auto-hit by Electric moves, bypassing accuracy/dodge)</option>
+        <option value="psychic">Psychic Terrain (Psychic moves hit 1.3× harder; any move with priority above 0 fails outright against a grounded target)</option>
+        <option value="poisonous">Poisonous Terrain (Non-Poison grounded targets fight at half Defense/Sp. Def; Steel types lose their immunity to Poison/Bad Poison while it's active)</option>
+      </select>
+    </label>
+
+    <div class="battle-arena battle-1v1-only" id="battleArena">
+      <div class="fighter-slot">
+        <label>Fighter A</label>
+        <select id="fighterASelect"><option value="">— Choose a fakemon —</option></select>
+        <div class="fighter-preview" id="fighterAPreview"></div>
+        <label>Fighter A Held Item</label>
+        <select id="fighterAItemSelect"><option value="">None</option></select>
+      </div>
+      <div class="vs-divider">VS</div>
+      <div class="fighter-slot">
+        <label>Fighter B</label>
+        <select id="fighterBSelect"><option value="">— Choose a fakemon —</option></select>
+        <div class="fighter-preview" id="fighterBPreview"></div>
+        <label>Fighter B Held Item</label>
+        <select id="fighterBItemSelect"><option value="">None</option></select>
+      </div>
+    </div>
+
+    <button class="btn-new" id="simulateBattleBtn" style="width:100%;margin-top:16px;" disabled>⚔ Simulate Battle</button>
+
+    <div id="battleResults"></div>
+  </section>
+
+  <!-- ===== ITEM DEX VIEW ===== -->
+  <section class="view" id="view-items">
+    <div class="section-head">
+      <div>
+        <h2>Item Dex</h2>
+        <p>Held &amp; consumable items that fighters can carry into battle.</p>
+      </div>
+    </div>
+    <div class="grid" id="itemGrid"></div>
+  </section>
+
+  <!-- ===== GLOBAL MOVE DEX VIEW ===== -->
+  <section class="view" id="view-movedex">
+    <div class="section-head">
+      <div>
+        <h2>Move Dex</h2>
+        <p>Every move created across your whole registry, in one searchable encyclopedia. Moves with an identical name, stats and effects are grouped into a single entry.</p>
+      </div>
+    </div>
+    <div class="filter-bar">
+      <div class="search-wrap">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="color:var(--slate)" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="moveDexSearchInput" placeholder="Search moves by name…">
+      </div>
+      <div class="chip-row">
+        <div class="filter-chip">
+          <button class="chip-btn" id="moveDexTypeChipBtn">All Types <span class="caret">▾</span></button>
+          <div class="chip-panel" id="moveDexTypeChipPanel"></div>
+        </div>
+        <div class="filter-chip">
+          <button class="chip-btn" id="moveDexCatChipBtn">All Categories <span class="caret">▾</span></button>
+          <div class="chip-panel" id="moveDexCatChipPanel"></div>
+        </div>
+      </div>
+    </div>
+    <div class="field-hint" id="moveDexSummary" style="margin:2px 2px 10px;"></div>
+    <div class="grid" id="moveDexGrid"></div>
+  </section>
+
+  <!-- ===== GLOBAL ABILITY DEX VIEW ===== -->
+  <section class="view" id="view-abilitydex">
+    <div class="section-head">
+      <div>
+        <h2>Ability Dex</h2>
+        <p>Every ability created across your whole registry. Identical name/effect abilities are grouped into a single entry.</p>
+      </div>
+    </div>
+    <div class="filter-bar">
+      <div class="search-wrap">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="color:var(--slate)" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="abilityDexSearchInput" placeholder="Search abilities by name…">
+      </div>
+      <div class="chip-row">
+        <div class="filter-chip">
+          <button class="chip-btn" id="abilityDexTypeChipBtn">All Kinds <span class="caret">▾</span></button>
+          <div class="chip-panel" id="abilityDexTypeChipPanel"></div>
+        </div>
+      </div>
+    </div>
+    <div class="field-hint" id="abilityDexSummary" style="margin:2px 2px 10px;"></div>
+    <div class="grid" id="abilityDexGrid"></div>
+  </section>
+
+  <!-- ===== REGIONS VIEW ===== -->
+  <section class="view" id="view-regions">
+    <div class="section-head">
+      <div>
+        <h2>Your Regions</h2>
+        <p>Every region is its own independent dex — build one per world, campaign, or idea.</p>
+      </div>
+    </div>
+    <div class="cart-grid" id="cartGrid"></div>
+  </section>
+
+  <!-- ===== SETTINGS VIEW ===== -->
+  <section class="view" id="view-settings">
+    <div class="section-head">
+      <div>
+        <h2>Settings</h2>
+        <p>Tune how FIELDDEX looks and manage your data.</p>
+      </div>
+    </div>
+    <div class="settings-block">
+      <h3>Display Theme</h3>
+      <p>Pick a palette — it re-tints the whole chassis, including the scanner readout.</p>
+      <div class="theme-options">
+        <div class="theme-card" data-theme="dark" id="themeDarkCard">
+          <div class="theme-preview"><span style="background:#14171c;"></span><span style="background:#20242c;"></span><span style="background:#5fd68c;"></span></div>
+          <h4>Dark Mode</h4>
+          <p>Ink black chassis with a phosphor-green scanner glow.</p>
+        </div>
+        <div class="theme-card" data-theme="light" id="themeLightCard">
+          <div class="theme-preview"><span style="background:#fff6f5;"></span><span style="background:#ffffff;border:1px solid #f0d3ce;"></span><span style="background:#cc2b2b;"></span></div>
+          <h4>Light Mode</h4>
+          <p>Classic red-and-white Pokédex chassis.</p>
+        </div>
+        <div class="theme-card" data-theme="gameboy" id="themeGameboyCard">
+          <div class="theme-preview"><span style="background:#9bbc0f;"></span><span style="background:#c9dc8f;"></span><span style="background:#306230;"></span></div>
+          <h4>Game Boy Mode</h4>
+          <p>Classic monochrome-green LCD, just like the original pocket dex.</p>
+        </div>
+      </div>
+    </div>
+    <div class="settings-block">
+      <h3>Export / Import</h3>
+      <p>Back up your regions and creatures as a JSON file, or load one back in.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button class="btn-secondary" id="exportBtn">⬇ Export JSON</button>
+        <button class="btn-secondary" id="importBtn">⬆ Import JSON</button>
+        <input type="file" id="importFile" accept="application/json" style="display:none;">
+      </div>
+    </div>
+    <div class="settings-block" id="mySuggestionsBlock" style="display:none;">
+      <h3>My Suggestions</h3>
+      <p>Ideas you've pitched on other people's entries, and how they're doing.</p>
+      <div id="mySuggestionsList" style="display:flex;flex-direction:column;gap:8px;margin-top:10px;"></div>
+    </div>
+  </section>
+
+  <!-- ===== PER-FAKEMON DETAIL PAGE ===== -->
+  <section class="view" id="view-detail">
+    <div class="detail-page">
+      <button class="back-btn" id="detailBackBtn">← Back to Main</button>
+      <div class="detail-card" id="detailCardContent"></div>
+    </div>
+  </section>
+</div>
+
+<!-- ============================================================================
+     ADD / EDIT FAKEMON MODAL — creature creation UX
+     ----------------------------------------------------------------------------
+     Design intent: only Name, Type, and Description are required to save an
+     entry. Everything else lives inside collapsed "details" sections ordered
+     from "most people will want this soon" (More Details, Stats) down to
+     "most people will never touch this" (Mega Evolutions / Other Forms, which
+     is deliberately the very last section).
+
+     Want to change what's required? Go to js/ui-form-handler.js and search
+     for the comment "REQUIRED FIELD CHECKS" inside the pokeForm submit
+     handler — that's the one place validation happens.
+
+     Want to reorder/rename a section, or promote a field out of "optional"
+     and into the always-visible top block? Just move its <div class="field">
+     block between the HTML comments below — every field is looked up by its
+     id in the JS, so it can live anywhere in the form and still work.
+============================================================================ -->
+<div class="overlay" id="formOverlay">
+  <div class="modal">
+    <div class="modal-head">
+      <h2 id="formTitle">Log New Fakemon</h2>
+      <button class="modal-close" id="closeForm">×</button>
+    </div>
+    <div class="modal-body">
+      <form id="pokeForm" novalidate>
+
+        <!-- ── STEP 1: THE ESSENTIALS (always visible, required) ───────────── -->
+        <p class="field-hint" style="margin:-2px 0 16px;">
+          Just the essentials for now — everything below is optional, and you can always come back and add stats, abilities, moves, evolutions, or a Mega Form later by editing this entry.
+        </p>
+
+        <div class="field">
+          <label>Name <span class="req-star">*</span></label>
+          <input type="text" id="f-name" required placeholder="e.g. Cindrake">
+        </div>
+
+        <div class="field">
+          <label>Type <span class="req-star">*</span> <span style="color:var(--slate);text-transform:none;font-weight:400;">(pick 1, or 2 if it's dual-type)</span></label>
+          <div class="type-grid" id="typeGrid"></div>
+        </div>
+
+        <div class="field">
+          <label>Description <span class="req-star">*</span></label>
+          <textarea id="f-desc" rows="3" required placeholder="What does it look like? Where does it live? What's it like? A sentence or two is plenty."></textarea>
+        </div>
+
+        <!-- ── STEP 2: OPTIONAL, worth adding when you have a minute ───────── -->
+
+        <details class="mv-advanced-details" open>
+        <summary class="mv-advanced-summary">📋 More details <span class="mv-advanced-summary-sub">(optional — region, category, creator, art, size, rarity)</span></summary>
+
+        <div class="field">
+          <label>Region (Dex)</label>
+          <select id="f-region"></select>
+        </div>
+        <div class="row2">
+          <div class="field">
+            <label>Category</label>
+            <input type="text" id="f-category" placeholder="e.g. Ember Wyrm Pokémon">
+          </div>
+          <div class="field">
+            <label>Creator</label>
+            <input type="text" id="f-creator" placeholder="Your Name">
+          </div>
+        </div>
+        <div class="field">
+          <label>Images <span style="color:var(--slate);text-transform:none;font-weight:400;">(all optional — add whichever you have)</span></label>
+          <div class="field-hint">If any image below is filled in, it's used as this creature's icon everywhere (dex grid, team chips, battle screen) instead of the emoji placeholder. Leave all four blank and the Sprite Icon picker further down is used instead. Tip: link a reasonably-sized image (roughly 500px or less) — the dex grid can show dozens of these on screen at once, so smaller files keep it fast.</div>
+          <div class="img-slot-grid" id="imgSlotGrid">
+            <div class="field">
+              <label style="font-size:12px;">Pixel Sprite</label>
+              <input type="text" id="f-image-pixel" placeholder="https://… small pixel-art sprite">
+              <div class="crop-picker" data-slot="pixel" style="display:none;"></div>
+            </div>
+            <div class="field">
+              <label style="font-size:12px;">Pixel Sprite (Shiny)</label>
+              <input type="text" id="f-image-pixel-shiny" placeholder="https://… shiny pixel sprite">
+              <div class="crop-picker" data-slot="pixelShiny" style="display:none;"></div>
+            </div>
+            <div class="field">
+              <label style="font-size:12px;">Official Artwork</label>
+              <input type="text" id="f-image" placeholder="https://… full-size artwork">
+              <div class="crop-picker" data-slot="artwork" style="display:none;"></div>
+            </div>
+            <div class="field">
+              <label style="font-size:12px;">Official Artwork (Shiny)</label>
+              <input type="text" id="f-image-artwork-shiny" placeholder="https://… shiny artwork">
+              <div class="crop-picker" data-slot="artworkShiny" style="display:none;"></div>
+            </div>
+          </div>
+          <div class="icon-preview-row" id="iconPreviewRow" style="display:none;">
+            <img id="iconPreviewImg" class="icon-preview-img" alt="Icon preview">
+            <span class="field-hint" style="margin:0;">This is what will show up as the icon instead of the emoji.</span>
+          </div>
+        </div>
+        <div class="field">
+          <label>Sprite Icon <span style="color:var(--slate);text-transform:none;font-weight:400;">(fallback — only used if no image above is set)</span></label>
+          <div class="emoji-row" id="emojiRow"></div>
+        </div>
+        <div class="field">
+          <label>Custom Icon Emoji <span style="color:var(--slate);text-transform:none;font-weight:400;">(fallback — only used if no image above is set)</span></label>
+          <input type="text" id="f-custom-icon" placeholder="Paste any emoji glyph to override the picker above (optional)" maxlength="8">
+          <div class="field-hint">If filled in — and no image above is set — this exact glyph is used everywhere instead of the Sprite Icon picker.</div>
+        </div>
+        <div class="row2">
+          <div class="field">
+            <label>Height (m)</label>
+            <input type="number" id="f-height" step="0.1" min="0" placeholder="1.2">
+          </div>
+          <div class="field">
+            <label>Weight (kg)</label>
+            <input type="number" id="f-weight" step="0.1" min="0" placeholder="24.5">
+          </div>
+        </div>
+        <div class="field">
+          <label>Rarity</label>
+          <select id="f-rarity">
+            <option value="common">Common</option>
+            <option value="uncommon">Uncommon</option>
+            <option value="rare">Rare</option>
+            <option value="legendary">Legendary</option>
+          </select>
+        </div>
+        </details>
+
+        <details class="mv-advanced-details">
+        <summary class="mv-advanced-summary">📊 Base Stats <span class="mv-advanced-summary-sub">(optional — defaults to a balanced 50 across the board)</span></summary>
+        <div class="field">
+          <div id="statFields"></div>
+        </div>
+        </details>
+
+        <!-- ── STEP 3: ADD LATER — abilities, moves, and family links ──────── -->
+
+        <details class="mv-advanced-details">
+        <summary class="mv-advanced-summary">✨ Abilities &amp; Moves <span class="mv-advanced-summary-sub">(optional — add these whenever you're ready)</span></summary>
+
+        <div class="field">
+          <label>Abilities</label>
+          <div class="dyn-list" id="abilityFields"></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button type="button" class="add-row-btn" id="addAbilityBtn">＋ Add Ability</button>
+            <button type="button" class="add-row-btn" id="importAbilityBtn">⤵ Import from Ability Dex</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Moves</label>
+          <div class="dyn-list" id="moveFields"></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button type="button" class="add-row-btn" id="addMoveBtn">＋ Add Move</button>
+            <button type="button" class="add-row-btn" id="importMoveBtn">⤵ Import from Move Dex</button>
+          </div>
+        </div>
+        </details>
+
+        <details class="mv-advanced-details">
+        <summary class="mv-advanced-summary">🔗 Evolution &amp; Variants <span class="mv-advanced-summary-sub">(optional — link this to another entry)</span></summary>
+
+        <div class="field">
+  <label>Evolves From</label>
+  <select id="f-preevo"></select>
+  <div class="link-hint">Pick an existing entry this creature evolves from.</div>
+</div>
+
+<div class="field-group" id="preEvoMethodField" style="display:none;">
+  <div class="field">
+    <label for="f-preevo-type">Evolution Method</label>
+    <select id="f-preevo-type">
+      <option value="level">Level Up</option>
+      <option value="item">Use Item / Stone</option>
+    </select>
+  </div>
+
+  <div class="field">
+    <label for="f-preevo-value">Requirement Value</label>
+    <input type="text" id="f-preevo-value" placeholder="e.g. 16 or fire-stone">
+  </div>
+</div>
+
+<div class="field">
+  <label>Variant Of</label>
+  <select id="f-variantof"></select>
+  <div class="link-hint">Pick an existing entry this is a variant of (e.g. regional form).</div>
+</div>
+        </details>
+
+        <!-- ── STEP 4: LAST, MOST ADVANCED — Mega/Other Forms live here on
+             purpose, at the bottom, so nobody has to see this to make a
+             normal entry. ──────────────────────────────────────────────── -->
+
+        <details class="mv-advanced-details">
+        <summary class="mv-advanced-summary">⚙ Advanced &amp; last-step options <span class="mv-advanced-summary-sub">(optional, do this last — Mega Evolutions / Other Forms, type matchup overrides, gender, food preferences)</span></summary>
+
+        <div class="field">
+          <label>Other Forms <span style="color:var(--slate);text-transform:none;font-weight:400;">(Mega Evolutions, regional forms, etc.)</span></label>
+          <div class="field-hint">Optional, and usually the last thing you'd add: give this creature a stronger second form triggered mid-battle by conditions you choose (e.g., holding a specific item). Skip this entirely for a normal entry.</div>
+          <div class="dyn-list" id="megaProfiles"></div>
+          <button type="button" class="add-row-btn" id="addMegaProfileBtn">＋ Add Other Forms</button>
+        </div>
+
+        <div class="field">
+          <label>Tag Matchups (extra weaknesses/resistances)</label>
+          <div class="field-hint">Optional. Give this specific creature a bonus weakness or resistance to a move tag (e.g. always take double damage from "Bite" moves) — separate from its normal type matchups, and it applies no matter what Ability is active. 0.5 = resists it, 2 = weak to it, 0 = immune to it.</div>
+          <div class="dyn-list" id="tagMatchupFields"></div>
+          <button type="button" class="add-row-btn" id="addTagMatchupBtn">＋ Add Tag Matchup</button>
+        </div>
+
+        <div class="field">
+          <label>Fakemon Tags</label>
+          <div class="field-hint">Optional free-text labels (comma-separated) — e.g. "levitating", "boss", "heavyweight". A few are recognized by the battle engine: "levitating" gives immunity to Terrain effects (like being Flying-type); "genderfluid" allows Infatuation with anyone.</div>
+          <input type="text" id="f-tags" data-tagkind="creature" placeholder="e.g. grounded, levitating, boss, heavyweight">
+          <div class="field-hint">"grounded" marks a Fakemon buried in the ground (Diglett, Dugtrio, Wugtrio, Mega Gengar-style). Buried, burrowed, underground and subterranean — in any capitalization — all become "grounded". Moves whose "Fails Against Fakemon Tags" includes grounded (Whirlwind, Telekinesis, Sky Drop...) fail against it.</div>
+        </div>
+
+        <div class="field">
+          <label>Gender</label>
+          <div class="field-hint">"Both" randomly picks Male or Female fresh each battle (only matters if something in battle checks gender).</div>
+          <select id="f-gender-pool">
+            <option value="Genderless">Genderless</option>
+            <option value="Male">Male Only</option>
+            <option value="Female">Female Only</option>
+            <option value="Both">Both (rolled randomly per battle)</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label>Food preferences</label>
+          <div class="field-hint">Optional. Controls how much this creature benefits from flavor-based berries/items.</div>
+          <div class="dyn-row-meta" style="flex-wrap:wrap;gap:10px;">
+            <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--slate);">Sweet
+              <select id="f-taste-sweet"><option value="neutral">Neutral</option><option value="likes">Likes</option><option value="hates">Hates</option></select>
+            </label>
+            <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--slate);">Spicy
+              <select id="f-taste-spicy"><option value="neutral">Neutral</option><option value="likes">Likes</option><option value="hates">Hates</option></select>
+            </label>
+            <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--slate);">Sour
+              <select id="f-taste-sour"><option value="neutral">Neutral</option><option value="likes">Likes</option><option value="hates">Hates</option></select>
+            </label>
+            <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--slate);">Bitter
+              <select id="f-taste-bitter"><option value="neutral">Neutral</option><option value="likes">Likes</option><option value="hates">Hates</option></select>
+            </label>
+            <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--slate);">Dry
+              <select id="f-taste-dry"><option value="neutral">Neutral</option><option value="likes">Likes</option><option value="hates">Hates</option></select>
+            </label>
+            <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--slate);">Savory
+              <select id="f-taste-savory"><option value="neutral">Neutral</option><option value="likes">Likes</option><option value="hates">Hates</option></select>
+            </label>
+          </div>
+        </div>
+        </details>
+
+        <div class="form-actions">
+          <button type="button" class="btn-secondary" id="cancelForm">Cancel</button>
+          <button type="submit" class="btn-primary" id="submitFormBtn">Save Entry</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- New Region Modal -->
+<div class="overlay" id="regionOverlay">
+  <div class="modal" style="max-width:440px;">
+    <div class="modal-head">
+      <h2 id="regionFormTitle">New Region</h2>
+      <button class="modal-close" id="closeRegionForm">×</button>
+    </div>
+    <div class="modal-body">
+      <form id="regionForm" novalidate>
+        <div class="field">
+          <label>Region Name</label>
+          <input type="text" id="r-name" required placeholder="e.g. Umbra Isles">
+        </div>
+        <div class="field">
+          <label>Subtitle</label>
+          <input type="text" id="r-subtitle" placeholder="e.g. Fog-shrouded volcanic archipelago">
+        </div>
+        <div class="field">
+          <label>Cartridge Color</label>
+          <div class="swatch-row" id="swatchRow"></div>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn-secondary" id="cancelRegionForm">Cancel</button>
+          <button type="submit" class="btn-primary">Save Region</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ===== ITEM FORM MODAL (Item Dex CRUD) ===== -->
+<div class="overlay" id="itemOverlay">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-head">
+      <h2 id="itemFormTitle">New Item</h2>
+      <button class="modal-close" id="closeItemForm">×</button>
+    </div>
+    <div class="modal-body">
+      <form id="itemForm" novalidate>
+        <div class="field">
+          <label>Item Name</label>
+          <input type="text" id="it-name" required placeholder="e.g. Leftovers">
+        </div>
+        <div class="field">
+          <label>Type</label>
+          <select id="it-type">
+            <option value="held">Held</option>
+            <option value="consumable">Consumable</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Flavor <span style="color:var(--slate);text-transform:none;font-weight:400;">(food items only)</span></label>
+          <select id="it-flavor"></select>
+          <div class="field-hint">If set, a Pokémon's Taste Preference for this flavor scales the item's effects when it's actually consumed: Liked = bigger effect, Disliked = weaker effect + a chance of Confusion, Neutral = no change.</div>
+        </div>
+        <div class="field">
+          <label>Max Uses per Battle <span style="color:var(--slate);text-transform:none;font-weight:400;">(0 = unlimited)</span></label>
+          <input type="number" id="it-maxuses" min="0" step="1" value="1">
+        </div>
+        <div class="field">
+          <label>Change Type <span style="color:var(--slate);text-transform:none;font-weight:400;">(Terastallization Engine — "none" disables Tera behavior entirely)</span></label>
+          <select id="it-teratype"></select>
+          <div class="field-hint">Once per battle, the holder can manually change into this Type — add an Effect below with Trigger <b>onUserIntent</b> and Action <b>Terastallize</b> to actually make it activatable.</div>
+        </div>
+        <div class="field">
+          <label class="dyn-hidden-check"><input type="checkbox" id="it-notera"> No Tera Required — learn the Dynamic Move below at battle start</label>
+          <div class="field-hint">Skips the Terastallize gate entirely: the holder knows and can use the move below from turn one, with no typing change and no need to spend the once-per-battle Tera activation.</div>
+        </div>
+        <div class="field tera-move-block">
+          <label class="rule-label">Dynamic Move Injector <span style="color:var(--slate);text-transform:none;font-weight:400;">(the full move builder — Base Power, Accuracy, PP, Tags, Effects, secondary Status/Stat/Heal/Hazard actions, everything — spliced into the holder's active moveset the moment it Terastallizes)</span></label>
+          <div class="dyn-list" id="it-teramove-list"></div>
+          <button type="button" class="add-row-btn" id="itImportMoveBtn">⤵ Import from Move Dex</button>
+          <div class="field-hint">Type and Category are always recalculated live (Type matches the holder's current Tera Type; Physical/Special follows whichever of Attack or Sp. Atk is higher) — so those two fields on the move below are ignored. Everything else you set — Base Power, Accuracy, PP, Tags, and any Effects you add — carries straight through to the injected move.</div>
+        </div>
+        <div class="field effects-block">
+          <label class="rule-label">Effects (unlimited — stack Heal, Stat Boost, Cure Status, Type Boost, etc. Use each effect's Priority to control which one fires first, and pick the onUse trigger for anything that should happen the instant this item is eaten/activated.)</label>
+          <div class="dyn-list" id="it-effects-list"></div>
+          <button type="button" class="add-row-btn" id="it-add-effect-btn">＋ Add Effect</button>
+        </div>
+        <div class="field">
+          <label>Immunities <span style="color:var(--slate);text-transform:none;font-weight:400;">(passive protection while held)</span></label>
+          <div class="dyn-row-meta" style="flex-wrap:wrap;">
+            <label class="dyn-hidden-check"><input type="checkbox" id="it-immune-freeze"> Freeze</label>
+            <label class="dyn-hidden-check"><input type="checkbox" id="it-immune-poison"> Poison</label>
+            <label class="dyn-hidden-check"><input type="checkbox" id="it-immune-burn"> Burn</label>
+            <label class="dyn-hidden-check"><input type="checkbox" id="it-immune-paralysis"> Paralysis</label>
+            <label class="dyn-hidden-check"><input type="checkbox" id="it-immune-sleep"> Sleep</label>
+            <label class="dyn-hidden-check"><input type="checkbox" id="it-immune-hazard"> Entry Hazard Immunity</label>
+          </div>
+        </div>
+        <div class="field">
+          <label>Deal Status Effect on Use <span style="color:var(--slate);text-transform:none;font-weight:400;">(fires the moment the holder enters battle)</span></label>
+          <div class="dyn-row-meta" style="flex-wrap:wrap;gap:10px;">
+            <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--slate);">Effect
+              <select id="it-status-effect"></select>
+            </label>
+            <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--slate);">Chance %
+              <input type="number" id="it-status-chance" min="0" max="100" step="1" value="100" style="width:80px;">
+            </label>
+            <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--slate);">Target
+              <select id="it-status-target">
+                <option value="opponent">Opponent</option>
+                <option value="self">Self</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <div class="field">
+          <label>Description</label>
+          <input type="text" id="it-desc" placeholder="Shown on the Item Dex card">
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn-secondary" id="cancelItemForm">Cancel</button>
+          <button type="submit" class="btn-primary">Save Item</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ===== IMPORT PICKER — shared by the Move Importer & Ability Importer. Lists grouped entries
+     pulled live from the Move Dex / Ability Dex, searchable by name, so a creator can pull an
+     existing move/ability into whatever they're currently editing and then tweak it from there. ===== -->
+<div class="overlay" id="importPickerOverlay">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-head">
+      <h2 id="importPickerTitle">Import Move</h2>
+      <button class="modal-close" id="closeImportPicker">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="search-wrap" style="margin-bottom:12px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="color:var(--slate)" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="importPickerSearch" placeholder="Search by name…">
+      </div>
+      <div id="importPickerList" style="display:flex;flex-direction:column;gap:8px;max-height:55vh;overflow-y:auto;"></div>
+      <div class="field-hint" id="importPickerEmpty" style="display:none;">Nothing matches yet — try a different search, or create it fresh with ＋ Add instead.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== LOGIN / SIGN UP MODAL — wired to js/ui-auth.js, which calls signIn/signUp/logOut
+     from js/auth.js. Toggling #authFormTitle + the two .auth-tab buttons switches between
+     the Sign In and Sign Up modes; the Display Name field only shows in Sign Up mode. ===== -->
+<div class="overlay" id="authOverlay">
+  <div class="modal" style="max-width:400px;">
+    <div class="modal-head">
+      <h2 id="authFormTitle">Log In</h2>
+      <button class="modal-close" id="closeAuthForm">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="auth-tabs">
+        <button type="button" class="auth-tab active" id="authTabSignIn" data-mode="signin">Log In</button>
+        <button type="button" class="auth-tab" id="authTabSignUp" data-mode="signup">Sign Up</button>
+      </div>
+      <form id="authForm" novalidate>
+        <div class="field" id="authNameField" style="display:none;">
+          <label>Trainer Name</label>
+          <input type="text" id="auth-name" placeholder="e.g. Ash">
+        </div>
+        <div class="field">
+          <label>Email</label>
+          <input type="email" id="auth-email" required placeholder="you@example.com">
+        </div>
+        <div class="field">
+          <label>Password</label>
+          <input type="password" id="auth-password" required placeholder="••••••••" minlength="6">
+        </div>
+        <div class="field-hint auth-error" id="authError" style="display:none;color:var(--danger);"></div>
+        <div class="form-actions">
+          <button type="submit" class="btn-primary" id="authSubmitBtn">Log In</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ===== ADD/EDIT A FORM MODAL — the "anyone can add a Mega Evolution / Alt Form" feature.
+     Reuses the exact same row builder as the owner's own Mega Profiles editor (addMegaProfileRow/
+     collectMegas in ui-form-handler.js) pointed at #formEditorRowContainer instead of the big
+     creature form, so it has full parity (types, stats, images, ability, moves, activation) with
+     zero duplicated UI. Wired up at the bottom of ui-form-handler.js. Saves to a separate Firestore
+     subcollection (js/forms-sync.js) — never touches the base entry's own document. ===== -->
+<div class="overlay" id="formEditorOverlay">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-head">
+      <h2 id="formEditorTitle">Add a Form</h2>
+      <button class="modal-close" id="closeFormEditor">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field-hint" id="formEditorHint" style="margin-bottom:10px;">
+        Add a Mega Evolution, Alt Form, Regional Form, or similar — anyone can add one of these,
+        even if you didn't create this creature. You can edit or delete it later, but only your
+        own form; the original creature itself is untouched by this.
+      </div>
+      <div id="formEditorRowContainer"></div>
+      <div class="form-actions" style="margin-top:14px;">
+        <button type="button" class="btn-secondary" id="cancelFormEditor">Cancel</button>
+        <button type="button" class="btn-primary" id="saveFormEditor">Save Form</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== SUGGEST SOMETHING MODAL — the "propose a Mega/Form, Evolution, or Art for someone
+     else's entry" feature. Reuses the Mega editor and image crop-picker exactly like the
+     "Add a Form" modal above. Submits to entries/{id}/suggestions (js/suggestions-sync.js) —
+     sits pending until that entry's creator accepts or rejects it. Wired up in ui-form-handler.js. ===== -->
+<div class="overlay" id="suggestOverlay">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-head">
+      <h2>Suggest Something</h2>
+      <button class="modal-close" id="closeSuggestModal">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field-hint" style="margin-bottom:10px;">
+        Pitch an idea for this creature — a Mega/alt Form, an Evolution, or Art if it doesn't
+        have any yet. The creator reviews it and can accept or pass; if they accept, you're
+        credited right on the entry.
+      </div>
+      <div class="auth-tabs" id="suggestTypeTabs">
+        <button type="button" class="auth-tab active" data-type="mega">Mega / Form</button>
+        <button type="button" class="auth-tab" data-type="evolution">Evolution</button>
+        <button type="button" class="auth-tab" data-type="art">Art</button>
+      </div>
+
+      <div id="suggestMegaSection">
+        <div id="suggestMegaContainer"></div>
+      </div>
+
+      <div id="suggestEvolutionSection" style="display:none;">
+        <div class="field">
+          <label>Evolved Form Name</label>
+          <input type="text" id="sug-evo-name" placeholder="e.g. Cindrake Major">
+        </div>
+        <div class="field">
+          <label>Category</label>
+          <input type="text" id="sug-evo-category" placeholder="e.g. Ember Wyrm Pokémon">
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Type 1</label>
+            <select id="sug-evo-type1"></select>
+          </div>
+          <div class="field">
+            <label>Type 2 (optional)</label>
+            <select id="sug-evo-type2"><option value="">— None —</option></select>
+          </div>
+        </div>
+        <div class="field">
+          <label>Evolution Method</label>
+          <input type="text" id="sug-evo-method" placeholder="e.g. Level 30, Trade holding a Fire Stone">
+        </div>
+        <div class="field-hint">Ballpark base stats — the creator can fine-tune these when they publish it.</div>
+        <div class="field-row" id="sugEvoStatsGrid"></div>
+        <div class="field">
+          <label>Description</label>
+          <textarea id="sug-evo-desc" rows="3" placeholder="What does it look like? What changed from its pre-evolution?"></textarea>
+        </div>
+        <div class="field">
+          <label>Art (optional)</label>
+          <div class="img-slot-grid">
+            <div class="field">
+              <label style="font-size:12px;">Pixel Sprite</label>
+              <input type="text" class="sugevo-image-pixel" placeholder="https://…">
+              <div class="crop-picker sugevo-image-pixel-crop" style="display:none;"></div>
+            </div>
+            <div class="field">
+              <label style="font-size:12px;">Official Artwork</label>
+              <input type="text" class="sugevo-image-artwork" placeholder="https://…">
+              <div class="crop-picker sugevo-image-artwork-crop" style="display:none;"></div>
+            </div>
+          </div>
+        </div>
+        <div class="field-hint">Ability/moves aren't part of this quick pitch — once accepted, you'll finish the full entry yourself, so you're credited as its real creator.</div>
+      </div>
+
+      <div id="suggestArtSection" style="display:none;">
+        <div class="field-hint">Link art for this creature — Pixel Sprite and/or Official Artwork, shiny variants optional.</div>
+        <div class="img-slot-grid">
+          <div class="field">
+            <label style="font-size:12px;">Pixel Sprite</label>
+            <input type="text" class="sugart-image-pixel" placeholder="https://… small pixel-art sprite">
+            <div class="crop-picker sugart-image-pixel-crop" style="display:none;"></div>
+          </div>
+          <div class="field">
+            <label style="font-size:12px;">Pixel Sprite (Shiny)</label>
+            <input type="text" class="sugart-image-pixel-shiny" placeholder="https://… shiny pixel sprite">
+            <div class="crop-picker sugart-image-pixel-shiny-crop" style="display:none;"></div>
+          </div>
+          <div class="field">
+            <label style="font-size:12px;">Official Artwork</label>
+            <input type="text" class="sugart-image-artwork" placeholder="https://… full-size artwork">
+            <div class="crop-picker sugart-image-artwork-crop" style="display:none;"></div>
+          </div>
+          <div class="field">
+            <label style="font-size:12px;">Official Artwork (Shiny)</label>
+            <input type="text" class="sugart-image-artwork-shiny" placeholder="https://… shiny artwork">
+            <div class="crop-picker sugart-image-artwork-shiny-crop" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="field" style="margin-top:10px;">
+        <label>Note to the creator (optional)</label>
+        <textarea id="suggestNote" rows="2" placeholder="Anything you want them to know about this idea?"></textarea>
+      </div>
+
+      <div class="form-actions" style="margin-top:14px;">
+        <button type="button" class="btn-secondary" id="cancelSuggestModal">Cancel</button>
+        <button type="button" class="btn-primary" id="submitSuggestion">Send Suggestion</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="js/firebase-config.js"></script>
+
+<script type="module" src="js/common/api-client.js"></script>
+<script type="module" src="js/auth.js"></script>
+<script type="module" src="js/ui-auth.js"></script>
+<script type="module" src="js/cloud-sync.js"></script>
+<script type="module" src="js/forms-sync.js"></script>
+<script type="module" src="js/suggestions-sync.js"></script>
+
+<script src="js/common.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/doubles.js"></script>
+<script src="js/ui-common.js"></script>
+<script src="js/ui-form-handler.js"></script>
+<script src="js/ui-dex-renderer.js"></script>
+<script src="js/ui-battle-interface.js"></script>
+<script src="js/searchable-select.js"></script>
+<script src="js/stat-number-input.js"></script>
+
+<script type="module" src="js/official-import.js"></script>
+<script type="module" src="js/official-items.js"></script>
+<script type="module" src="js/official-forms.js"></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
